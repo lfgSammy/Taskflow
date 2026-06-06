@@ -263,3 +263,159 @@ class ProjectListView(APIView):
     
 class ProjectDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def get_project(self, project_id, user):
+        try:
+            project = Project.objects.get(id=project_id)
+            workspace, membership = get_membership(user, project.workspace.id)
+            return project, membership
+        except Project.DoesNotExist:
+            return None, None
+        
+    def get(self, request, project_id):
+        project, membership = self.get_project(project_id, request.user)
+        if not project or not membership:
+            return Response({'error':'Project not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = ProjectSerializer(project)
+        return Response(serializer.data)
+    
+    def patch(self, request, project_id):
+        project, membership = self.get_project(project_id, request.user)
+        if not project or not membership:
+            return Response({'error':'Project not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if membership.role not in ['owner','admin']:
+            return Response({'error':'Only admin and owner can update project'},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        serializer = ProjectSerializer(project, data=request.data, partial = True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, project_id):
+        project, membership = self.get_project(project_id, request.user)
+        if not project or not membership:
+            return Response({'errors':'Project not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not membership.role not in ['owner','admin']:
+            return Response({'error':'Only owners and admin can delete project'},
+                            status=status.HTTP_403_FORBIDDEN)
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class TaskListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_project(self, project_id, user):
+        try:
+            project = Project.objects.get(id=project_id)
+            workspace, membership = get_membership(user, project.workspace.id)
+            return project, membership
+        except Project.DoesNotExist:
+            return None, None
+        
+    def get(self, request, project_id):
+        project, membership = self.get_project(project_id, request.user)
+        if not project or not membership:
+            return Response({'error':'Project not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        task = Task.objects.filter(project= project)
+        serializer = TaskSerializer(task, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request, project_id):
+        project, membership = self.get_project(project_id, request.user)
+        if not project or not membership:
+            return Response({'error':'Project not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = TaskSerializer(data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class TaskDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_task(self, task_id, user):
+        try:
+            task = Task.objects.get(id= task_id)
+            workspace, membership = get_membership(user, task.project.workspace.id)
+            return task, membership
+        except Task.DoesNotExist:
+            return None, None
+    
+    def get(self, request, task_id):
+        task, membership = self.get_task(task_id, request.user)
+        if not task or not membership:
+            return Response({'error':'Task not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = TaskSerializer(task)
+        return Response(serializer.data)
+    
+    def patch(self, request, task_id):
+        task, membership = self.get_task(task_id, request.user)
+        if not task or not membership:
+            return Response({'error':'Task not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if membership.role != 'member':
+            if task.assigned_to != request.user:
+                return Response({'error':'You can only update tasks assigned to you'},
+                                status=status.HTTP_403_FORBIDDEN)
+            allowed_fields = {'status'}
+            if not set(request.data.keys()).issubset(allowed_fields):
+                return Response({'error':'members can only update task status'},
+                                status=status.HTTP_403_FORBIDDEN)
+        serializer = TaskSerializer(task, data= request.data, partial = True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, task_id):
+        task, membership = self.get_task(task_id, request.user)
+        if not task or not membership:
+            return Response({'error':'Task not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if membership.role not in ['owner','admin']:
+            return Response({'error':'Only admin or owner can delete a task'},
+                            status=status.HTTP_403_FORBIDDEN)
+        task.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+class CommentListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_task(self, task_id, user):
+        try:
+            task = Task.objects.get(id=task_id)
+            workspace, membership = get_membership(user, task.project.workspace.id)
+            return task, membership
+        except Task.DoesNotExist:
+            return None, None
+        
+    def get(self, request, task_id):
+        task, membership = self.get_task(task_id, request.user)
+        if not task or not membership:
+            return Response({'error':'Task not found'},
+                            status= status.HTTP_404_NOT_FOUND)
+        comments = Comment.objects.filter(task = task)
+        serializer = CommentSerializer(comments, many=True)
+        return Response
+    
+    def post(self, request, task_id):
+        task, membership = self.get_task(task_id, request.user)
+        if not task or not membership:
+            return Response({'error': 'Task not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        serializer = CommentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(task=task, author=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        
+        
+        
